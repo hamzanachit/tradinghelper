@@ -81,6 +81,11 @@
         <div class="indicator"><span>Hist</span><span id="hist">---</span></div>
       </div>
       <div class="section">
+        <div class="section-title">Volume</div>
+        <div class="indicator"><span>Current</span><span id="volume">---</span></div>
+        <div class="indicator"><span>SMA 20</span><span id="volSma">---</span></div>
+      </div>
+      <div class="section">
         <div class="section-title">Bollinger Bands</div>
         <div class="indicator"><span>Upper</span><span id="bbUpper">---</span></div>
         <div class="indicator"><span>Middle</span><span id="bbMiddle">---</span></div>
@@ -100,8 +105,17 @@
       layout: { background: { type: "solid", color: "#0a0a0a" }, textColor: "#888" },
       grid: { vertLines: { color: "#1a1a1a" }, horzLines: { color: "#1a1a1a" } },
       crosshair: { mode: 1 },
-      rightPriceScale: { borderColor: "#222" },
+      rightPriceScale: { 
+        borderColor: "#222",
+        scaleMargins: { top: 0.05, bottom: 0.35 }
+      },
       timeScale: { borderColor: "#222", timeVisible: true }
+    });
+
+    chart.priceScale("volume").applyOptions({
+      scaleMargins: { top: 0.68, bottom: 0.02 },
+      borderVisible: false,
+      visible: false
     });
 
     var candleSeries = chart.addCandlestickSeries({
@@ -114,7 +128,15 @@
     var ema20Line = chart.addLineSeries({ color: "#42a5f5", lineWidth: 1 });
     var ema50Line = chart.addLineSeries({ color: "#ef5350", lineWidth: 1 });
 
+    var volumeSeries = chart.addHistogramSeries({
+      color: "#26a69a",
+      priceFormat: { type: "volume" },
+      priceScaleId: "volume",
+      scaleMargins: { top: 0.75, bottom: 0 }
+    });
+
     var closes = [];
+    var volumes = [];
     var MAX_DATA = 500;
 
     function calcEMA(data, period) {
@@ -170,9 +192,17 @@
       return { upper: sma + stdDev * std, middle: sma, lower: sma - stdDev * std };
     }
 
-    function updateUI(close) {
+    function updateUI(candle) {
+      var close = candle.c;
+      var volume = candle.v || 0;
+      var now = Number(candle.time);
+      
       closes.push(close);
-      if (closes.length > MAX_DATA) closes.shift();
+      volumes.push(volume);
+      if (closes.length > MAX_DATA) {
+        closes.shift();
+        volumes.shift();
+      }
       
       var rsi = calcRSI(closes, 14);
       var ema9 = calcEMA(closes, 9);
@@ -180,6 +210,7 @@
       var ema50 = calcEMA(closes, 50);
       var macd = calcMACD(closes);
       var bb = calcBB(closes, 20, 2);
+      var volSma = calcSMA(volumes, 20);
       
       document.getElementById("price").textContent = close.toFixed(4);
       document.getElementById("rsi").textContent = rsi ? rsi.toFixed(2) : "---";
@@ -192,6 +223,8 @@
       document.getElementById("bbUpper").textContent = bb ? bb.upper.toFixed(4) : "---";
       document.getElementById("bbMiddle").textContent = bb ? bb.middle.toFixed(4) : "---";
       document.getElementById("bbLower").textContent = bb ? bb.lower.toFixed(4) : "---";
+      document.getElementById("volume").textContent = volume ? volume.toFixed(0) : "---";
+      document.getElementById("volSma").textContent = volSma ? volSma.toFixed(0) : "---";
       
       var signalEl = document.getElementById("signal");
       if (rsi !== null) {
@@ -208,10 +241,16 @@
         else { signalEl.textContent = "NEUTRAL"; signalEl.className = "signal neutral"; }
       }
       
-      var now = Math.floor(Date.now() / 1000);
       if (ema9) ema9Line.update({ time: now, value: ema9 });
       if (ema20) ema20Line.update({ time: now, value: ema20 });
       if (ema50) ema50Line.update({ time: now, value: ema50 });
+      
+      var prevClose = loadedCandles.length > 1 ? loadedCandles[loadedCandles.length - 2]?.c || close : close;
+      volumeSeries.update({
+        time: now,
+        value: volume,
+        color: close >= prevClose ? "#26a69a" : "#ef5350"
+      });
     }
 
     function resizeChart() {
@@ -235,23 +274,35 @@
           if (data.length > 0) {
             loadedCandles = data;
             closes = data.map(function(c) { return c.c; });
+            volumes = data.map(function(c) { return c.v || 0; });
             
             var candleData = data.map(function(c) {
               return { time: c.time, open: c.o, high: c.h, low: c.l, close: c.c };
             });
             
             candleSeries.setData(candleData);
+            
+            var volumeData = data.map(function(c) {
+              return {
+                time: c.time,
+                value: c.v || 0,
+                color: c.c >= c.o ? "#26a69a" : "#ef5350"
+              };
+            });
+            volumeSeries.setData(volumeData);
+            
             document.getElementById("candle-count").textContent = data.length + " candles";
             
             var lastCandle = data[data.length - 1];
-            updateUI(lastCandle.c);
+            updateUI(lastCandle);
           }
           
           document.getElementById("loading").style.display = "none";
           
           document.querySelectorAll(".tf-btn").forEach(function(b) {
             b.classList.remove("active");
-            if (b.textContent.toLowerCase() === timeframe.replace("h", "H").replace("d", "D").replace("4h", "4H")) {
+            var tfDisplay = timeframe.replace("4h", "4H").replace("h", "H").replace("d", "D");
+            if (b.textContent.toLowerCase() === tfDisplay.toLowerCase()) {
               b.classList.add("active");
             }
           });
@@ -259,6 +310,7 @@
         .catch(function(err) {
           console.error("Error loading candles:", err);
           document.getElementById("load-status").textContent = "Error loading data";
+          document.getElementById("loading").style.display = "none";
         });
     }
 
@@ -281,20 +333,30 @@
     });
     
     socket.on("candle", function(data) {
-      var candle = { time: data.time, open: data.o, high: data.h, low: data.l, close: data.c };
+      var candle = { time: data.time, open: data.o, high: data.h, low: data.l, close: data.c, v: data.v || 0 };
       
       if (loadedCandles.length > 0) {
         var last = loadedCandles[loadedCandles.length - 1];
         if (last.time === data.time) {
           loadedCandles[loadedCandles.length - 1] = data;
           candleSeries.update(candle);
+          volumeSeries.update({
+            time: data.time,
+            value: data.v || 0,
+            color: data.c >= last.o ? "#26a69a" : "#ef5350"
+          });
         } else {
           loadedCandles.push(data);
           candleSeries.update(candle);
+          volumeSeries.update({
+            time: data.time,
+            value: data.v || 0,
+            color: data.c >= data.o ? "#26a69a" : "#ef5350"
+          });
         }
       }
       
-      updateUI(data.c);
+      updateUI(data);
     });
     
     socket.on("connect_error", function(err) {
