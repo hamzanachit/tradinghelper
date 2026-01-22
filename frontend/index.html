@@ -61,9 +61,10 @@
     <div id="signal" class="signal neutral">WAIT</div>
   </header>
 
-  <main class="main">
-    <div id="chart"></div>
-    <aside class="sidebar">
+    <main class="main">
+      <div id="chart" style="height: 70%;"></div>
+      <div id="volume-chart" style="height: 28%; border-top: 1px solid #222;"></div>
+      <aside class="sidebar">
       <div class="section">
         <div class="section-title">RSI (14)</div>
         <div class="indicator"><span>Value</span><span id="rsi">---</span></div>
@@ -107,15 +108,24 @@
       crosshair: { mode: 1 },
       rightPriceScale: { 
         borderColor: "#222",
-        scaleMargins: { top: 0.05, bottom: 0.35 }
+        scaleMargins: { top: 0.02, bottom: 0.05 }
       },
-      timeScale: { borderColor: "#222", timeVisible: true }
+      timeScale: { 
+        borderColor: "#222", 
+        timeVisible: true,
+        minBarSpacing: 2
+      }
     });
 
-    chart.priceScale("volume").applyOptions({
-      scaleMargins: { top: 0.68, bottom: 0.02 },
-      borderVisible: false,
-      visible: false
+    var volumeChart = LightweightCharts.createChart(document.getElementById("volume-chart"), {
+      layout: { background: { type: "solid", color: "#0a0a0a" }, textColor: "#888" },
+      grid: { vertLines: { color: "#1a1a1a" }, horzLines: { color: "#1a1a1a" } },
+      crosshair: { mode: 1 },
+      rightPriceScale: { 
+        borderColor: "#222",
+        scaleMargins: { top: 0.1, bottom: 0.1 }
+      },
+      timeScale: { borderColor: "#222", timeVisible: true }
     });
 
     var candleSeries = chart.addCandlestickSeries({
@@ -128,16 +138,21 @@
     var ema20Line = chart.addLineSeries({ color: "#42a5f5", lineWidth: 1 });
     var ema50Line = chart.addLineSeries({ color: "#ef5350", lineWidth: 1 });
 
-    var volumeSeries = chart.addHistogramSeries({
+    var volumeSeries = volumeChart.addHistogramSeries({
       color: "#26a69a",
-      priceFormat: { type: "volume" },
-      priceScaleId: "volume",
-      scaleMargins: { top: 0.75, bottom: 0 }
+      priceFormat: { type: "volume" }
     });
 
     var closes = [];
     var volumes = [];
     var MAX_DATA = 500;
+
+    function syncTimeScale() {
+      var logicalRange = chart.timeScale().getVisibleLogicalRange();
+      if (logicalRange) {
+        volumeChart.timeScale().setVisibleLogicalRange(logicalRange);
+      }
+    }
 
     function calcEMA(data, period) {
       if (data.length < period) return null;
@@ -253,14 +268,7 @@
       });
     }
 
-    function resizeChart() {
-      chart.applyOptions({ 
-        width: chartContainer.clientWidth, 
-        height: chartContainer.clientHeight 
-      });
-    }
-    window.addEventListener("resize", resizeChart);
-    resizeChart();
+    chart.timeScale().subscribeVisibleLogicalRangeChange(syncTimeScale);
 
     function loadCandles(timeframe) {
       document.getElementById("loading").style.display = "flex";
@@ -271,7 +279,7 @@
         .then(function(data) {
           document.getElementById("load-status").textContent = "Loaded " + data.length + " candles";
           
-          if (data.length > 0) {
+            if (data.length > 0) {
             loadedCandles = data;
             closes = data.map(function(c) { return c.c; });
             volumes = data.map(function(c) { return c.v || 0; });
@@ -363,6 +371,19 @@
       console.error("Connection error:", err.message);
       document.getElementById("status").textContent = "Error";
     });
+
+    function resizeChart() {
+      chart.applyOptions({ 
+        width: chartContainer.clientWidth, 
+        height: chartContainer.clientHeight 
+      });
+      volumeChart.applyOptions({
+        width: document.getElementById("volume-chart").clientWidth,
+        height: document.getElementById("volume-chart").clientHeight
+      });
+    }
+    window.addEventListener("resize", resizeChart);
+    resizeChart();
 
     loadCandles("1h");
   </script>
