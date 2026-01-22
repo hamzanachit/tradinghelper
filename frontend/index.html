@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HBAR/USDT - Live Chart</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0a0a0a; color: #fff; font-family: -apple-system, sans-serif; overflow: hidden; }
+    .header { background: #111; padding: 12px 20px; border-bottom: 1px solid #222; display: flex; justify-content: space-between; align-items: center; }
+    .title { font-size: 18px; font-weight: bold; }
+    .price { font-size: 22px; font-family: monospace; color: #26a69a; }
+    .signal { padding: 6px 14px; border-radius: 4px; font-weight: bold; font-size: 14px; }
+    .signal.buy { background: #00C853; color: #fff; }
+    .signal.sell { background: #FF1744; color: #fff; }
+    .signal.neutral { background: #666; color: #fff; }
+    .main { display: flex; flex-direction: column; height: calc(100vh - 50px); }
+    #chart { flex: 1; min-height: 300px; }
+    .sidebar { background: #111; padding: 10px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; border-top: 1px solid #222; }
+    .section { background: #0a0a0a; padding: 8px; border-radius: 4px; }
+    .section-title { color: #888; font-size: 10px; margin-bottom: 6px; text-transform: uppercase; }
+    .indicator { display: flex; justify-content: space-between; padding: 3px 0; font-size: 11px; }
+    .status { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #888; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #666; }
+    .dot.live { background: #00C853; animation: pulse 1s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    .loading { position: fixed; inset: 0; background: rgba(0,0,0,0.9); display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 15px; z-index: 1000; }
+    .spinner { width: 40px; height: 40px; border: 3px solid #333; border-top-color: #26a69a; border-radius: 50%; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .timeframes { display: flex; gap: 5px; margin-top: 5px; }
+    .tf-btn { padding: 4px 8px; background: #222; border: none; color: #888; border-radius: 3px; cursor: pointer; font-size: 11px; }
+    .tf-btn.active { background: #26a69a; color: #fff; }
+  </style>
+</head>
+<body>
+  <div id="loading" class="loading">
+    <div class="spinner"></div>
+    <div>Loading historical data...</div>
+    <div id="load-status" style="font-size: 12px; color: #888;">Fetching from Binance...</div>
+  </div>
+
+  <header class="header">
+    <div>
+      <div class="title">HBAR/USDT</div>
+      <div class="timeframes">
+        <button class="tf-btn" onclick="setTimeframe('1m')">1m</button>
+        <button class="tf-btn" onclick="setTimeframe('5m')">5m</button>
+        <button class="tf-btn" onclick="setTimeframe('15m')">15m</button>
+        <button class="tf-btn" onclick="setTimeframe('30m')">30m</button>
+        <button class="tf-btn active" onclick="setTimeframe('1h')">1H</button>
+        <button class="tf-btn" onclick="setTimeframe('4h')">4H</button>
+        <button class="tf-btn" onclick="setTimeframe('1d')">1D</button>
+      </div>
+    </div>
+    <div class="status">
+      <div id="dot" class="dot"></div>
+      <span id="status">Connecting...</span>
+      <span id="candle-count" style="color: #666; margin-left: 10px;"></span>
+    </div>
+    <div class="price" id="price">---</div>
+    <div id="signal" class="signal neutral">WAIT</div>
+  </header>
+
+  <main class="main">
+    <div id="chart"></div>
+    <aside class="sidebar">
+      <div class="section">
+        <div class="section-title">RSI (14)</div>
+        <div class="indicator"><span>Value</span><span id="rsi">---</span></div>
+      </div>
+      <div class="section">
+        <div class="section-title">EMA</div>
+        <div class="indicator"><span style="color:#f9a825">EMA 9</span><span id="ema9">---</span></div>
+        <div class="indicator"><span style="color:#42a5f5">EMA 20</span><span id="ema20">---</span></div>
+        <div class="indicator"><span style="color:#ef5350">EMA 50</span><span id="ema50">---</span></div>
+      </div>
+      <div class="section">
+        <div class="section-title">MACD</div>
+        <div class="indicator"><span>MACD</span><span id="macd">---</span></div>
+        <div class="indicator"><span>Signal</span><span id="macdSignal">---</span></div>
+        <div class="indicator"><span>Hist</span><span id="hist">---</span></div>
+      </div>
+      <div class="section">
+        <div class="section-title">Bollinger Bands</div>
+        <div class="indicator"><span>Upper</span><span id="bbUpper">---</span></div>
+        <div class="indicator"><span>Middle</span><span id="bbMiddle">---</span></div>
+        <div class="indicator"><span>Lower</span><span id="bbLower">---</span></div>
+      </div>
+    </aside>
+  </main>
+
+  <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script>
+    var currentTimeframe = "1h";
+    var chartContainer = document.getElementById("chart");
+    var loadedCandles = [];
+    
+    var chart = LightweightCharts.createChart(chartContainer, {
+      layout: { background: { type: "solid", color: "#0a0a0a" }, textColor: "#888" },
+      grid: { vertLines: { color: "#1a1a1a" }, horzLines: { color: "#1a1a1a" } },
+      crosshair: { mode: 1 },
+      rightPriceScale: { borderColor: "#222" },
+      timeScale: { borderColor: "#222", timeVisible: true }
+    });
+
+    var candleSeries = chart.addCandlestickSeries({
+      upColor: "#26a69a", downColor: "#ef5350",
+      borderUpColor: "#26a69a", borderDownColor: "#ef5350",
+      wickUpColor: "#26a69a", wickDownColor: "#ef5350"
+    });
+
+    var ema9Line = chart.addLineSeries({ color: "#f9a825", lineWidth: 1 });
+    var ema20Line = chart.addLineSeries({ color: "#42a5f5", lineWidth: 1 });
+    var ema50Line = chart.addLineSeries({ color: "#ef5350", lineWidth: 1 });
+
+    var closes = [];
+    var MAX_DATA = 500;
+
+    function calcEMA(data, period) {
+      if (data.length < period) return null;
+      var k = 2 / (period + 1);
+      var ema = data[data.length - period];
+      for (var i = data.length - period + 1; i < data.length; i++) {
+        ema = data[i] * k + ema * (1 - k);
+      }
+      return ema;
+    }
+
+    function calcSMA(data, period) {
+      if (data.length < period) return null;
+      var slice = data.slice(-period);
+      return slice.reduce(function(a, b) { return a + b; }, 0) / period;
+    }
+
+    function calcRSI(data, period) {
+      if (data.length < period + 1) return null;
+      var gains = 0, losses = 0;
+      for (var i = data.length - period; i < data.length; i++) {
+        var change = data[i] - data[i - 1];
+        if (change > 0) gains += change;
+        else losses -= change;
+      }
+      var rs = gains / (losses || 0.0001);
+      return 100 - (100 / (1 + rs));
+    }
+
+    function calcMACD(data) {
+      if (data.length < 26) return null;
+      var ema12 = calcEMA(data, 12);
+      var ema26 = calcEMA(data, 26);
+      var macdLine = ema12 - ema26;
+      var macdData = [];
+      for (var i = data.length - 26; i < data.length; i++) {
+        var slice = data.slice(0, i + 1);
+        var e12 = calcEMA(slice, 12);
+        var e26 = calcEMA(slice, 26);
+        macdData.push(e12 - e26);
+      }
+      var signalLine = calcEMA(macdData, 9);
+      return { macd: macdLine, signal: signalLine, histogram: macdLine - signalLine };
+    }
+
+    function calcBB(data, period, stdDev) {
+      if (data.length < period) return null;
+      var sma = calcSMA(data, period);
+      var slice = data.slice(-period);
+      var variance = slice.reduce(function(sum, val) { return sum + Math.pow(val - sma, 2); }, 0) / period;
+      var std = Math.sqrt(variance);
+      return { upper: sma + stdDev * std, middle: sma, lower: sma - stdDev * std };
+    }
+
+    function updateUI(close) {
+      closes.push(close);
+      if (closes.length > MAX_DATA) closes.shift();
+      
+      var rsi = calcRSI(closes, 14);
+      var ema9 = calcEMA(closes, 9);
+      var ema20 = calcEMA(closes, 20);
+      var ema50 = calcEMA(closes, 50);
+      var macd = calcMACD(closes);
+      var bb = calcBB(closes, 20, 2);
+      
+      document.getElementById("price").textContent = close.toFixed(4);
+      document.getElementById("rsi").textContent = rsi ? rsi.toFixed(2) : "---";
+      document.getElementById("ema9").textContent = ema9 ? ema9.toFixed(4) : "---";
+      document.getElementById("ema20").textContent = ema20 ? ema20.toFixed(4) : "---";
+      document.getElementById("ema50").textContent = ema50 ? ema50.toFixed(4) : "---";
+      document.getElementById("macd").textContent = macd ? macd.macd.toFixed(6) : "---";
+      document.getElementById("macdSignal").textContent = macd ? macd.signal.toFixed(6) : "---";
+      document.getElementById("hist").textContent = macd ? macd.histogram.toFixed(6) : "---";
+      document.getElementById("bbUpper").textContent = bb ? bb.upper.toFixed(4) : "---";
+      document.getElementById("bbMiddle").textContent = bb ? bb.middle.toFixed(4) : "---";
+      document.getElementById("bbLower").textContent = bb ? bb.lower.toFixed(4) : "---";
+      
+      var signalEl = document.getElementById("signal");
+      if (rsi !== null) {
+        var score = 0;
+        if (rsi < 30) score += 2;
+        else if (rsi > 70) score -= 2;
+        if (ema9 > ema20) score += 1;
+        else score -= 1;
+        if (macd && macd.histogram > 0) score += 1;
+        else if (macd) score -= 1;
+        
+        if (score >= 2) { signalEl.textContent = "BUY"; signalEl.className = "signal buy"; }
+        else if (score <= -2) { signalEl.textContent = "SELL"; signalEl.className = "signal sell"; }
+        else { signalEl.textContent = "NEUTRAL"; signalEl.className = "signal neutral"; }
+      }
+      
+      var now = Math.floor(Date.now() / 1000);
+      if (ema9) ema9Line.update({ time: now, value: ema9 });
+      if (ema20) ema20Line.update({ time: now, value: ema20 });
+      if (ema50) ema50Line.update({ time: now, value: ema50 });
+    }
+
+    function resizeChart() {
+      chart.applyOptions({ 
+        width: chartContainer.clientWidth, 
+        height: chartContainer.clientHeight 
+      });
+    }
+    window.addEventListener("resize", resizeChart);
+    resizeChart();
+
+    function loadCandles(timeframe) {
+      document.getElementById("loading").style.display = "flex";
+      document.getElementById("load-status").textContent = "Fetching " + timeframe + " data from Binance...";
+      
+      fetch("/api/candles?timeframe=" + timeframe)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          document.getElementById("load-status").textContent = "Loaded " + data.length + " candles";
+          
+          if (data.length > 0) {
+            loadedCandles = data;
+            closes = data.map(function(c) { return c.c; });
+            
+            var candleData = data.map(function(c) {
+              return { time: c.time, open: c.o, high: c.h, low: c.l, close: c.c };
+            });
+            
+            candleSeries.setData(candleData);
+            document.getElementById("candle-count").textContent = data.length + " candles";
+            
+            var lastCandle = data[data.length - 1];
+            updateUI(lastCandle.c);
+          }
+          
+          document.getElementById("loading").style.display = "none";
+          
+          document.querySelectorAll(".tf-btn").forEach(function(b) {
+            b.classList.remove("active");
+            if (b.textContent.toLowerCase() === timeframe.replace("h", "H").replace("d", "D").replace("4h", "4H")) {
+              b.classList.add("active");
+            }
+          });
+        })
+        .catch(function(err) {
+          console.error("Error loading candles:", err);
+          document.getElementById("load-status").textContent = "Error loading data";
+        });
+    }
+
+    function setTimeframe(tf) {
+      currentTimeframe = tf;
+      loadCandles(tf);
+    }
+
+    var socket = io("http://localhost:3001");
+    
+    socket.on("connect", function() {
+      document.getElementById("status").textContent = "Live";
+      document.getElementById("dot").classList.add("live");
+      console.log("Socket connected");
+    });
+    
+    socket.on("disconnect", function() {
+      document.getElementById("status").textContent = "Disconnected";
+      document.getElementById("dot").classList.remove("live");
+    });
+    
+    socket.on("candle", function(data) {
+      var candle = { time: data.time, open: data.o, high: data.h, low: data.l, close: data.c };
+      
+      if (loadedCandles.length > 0) {
+        var last = loadedCandles[loadedCandles.length - 1];
+        if (last.time === data.time) {
+          loadedCandles[loadedCandles.length - 1] = data;
+          candleSeries.update(candle);
+        } else {
+          loadedCandles.push(data);
+          candleSeries.update(candle);
+        }
+      }
+      
+      updateUI(data.c);
+    });
+    
+    socket.on("connect_error", function(err) {
+      console.error("Connection error:", err.message);
+      document.getElementById("status").textContent = "Error";
+    });
+
+    loadCandles("1h");
+  </script>
+</body>
+</html>
