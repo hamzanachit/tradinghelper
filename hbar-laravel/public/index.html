@@ -597,7 +597,7 @@
             <div class="panel-title">Price Alerts</div>
             <div id="alerts-list"></div>
             <div class="add-alert-row">
-              <input type="number" id="alert-price" class="add-alert-input" placeholder="Price" step="0.0001">
+              <input type="number" id="alert-price" class="add-alert-input" placeholder="Price" step="0.00000001">
               <button class="add-alert-btn" onclick="addAlert()">+</button>
             </div>
           </div>
@@ -917,7 +917,7 @@
       alerts.forEach(function(a, i) {
         var isAbove = a.price > alertPrice;
         html += '<div class="alert-item"><span class="alert-price ' + (isAbove ? 'alert-above' : 'alert-below') + '">' + 
-          (isAbove ? "↑ " : "↓ ") + a.price.toFixed(4) + '</span><button class="alert-delete" onclick="deleteAlert(' + i + ')">✕</button></div>';
+          (isAbove ? "↑ " : "↓ ") + a.price.toFixed(8) + '</span><button class="alert-delete" onclick="deleteAlert(' + i + ')">✕</button></div>';
       });
       document.getElementById("alerts-list").innerHTML = html;
     }
@@ -928,7 +928,7 @@
         if (!a.triggered) {
           if ((a.price > alertPrice && price >= a.price) || (a.price < alertPrice && price <= a.price)) {
             a.triggered = true;
-            alert("Alert: HBAR/USDT reached $" + a.price.toFixed(4));
+            alert("Alert: HBAR/USDT reached $" + a.price.toFixed(8));
             renderAlerts();
           }
         }
@@ -969,7 +969,7 @@
       
       if (close === null || close === undefined) return;
       
-      document.getElementById("price").textContent = close.toFixed(4);
+      document.getElementById("price").textContent = close.toFixed(8);
       checkAlerts(close);
       
       var prevCloseData = loadedCandles.length > 1 ? loadedCandles[loadedCandles.length - 2] : null;
@@ -978,19 +978,19 @@
       document.getElementById("price").className = priceClass;
       
       document.getElementById("rsi").textContent = rsi ? rsi.toFixed(2) : "---";
-      document.getElementById("ema9").textContent = ema9 ? ema9.toFixed(4) : "---";
-      document.getElementById("ema20").textContent = ema20 ? ema20.toFixed(4) : "---";
-      document.getElementById("ema50").textContent = ema50 ? ema50.toFixed(4) : "---";
+      document.getElementById("ema9").textContent = ema9 ? ema9.toFixed(8) : "---";
+      document.getElementById("ema20").textContent = ema20 ? ema20.toFixed(8) : "---";
+      document.getElementById("ema50").textContent = ema50 ? ema50.toFixed(8) : "---";
       document.getElementById("macd").textContent = macd ? macd.macd.toFixed(6) : "---";
       document.getElementById("macdSignal").textContent = macd ? macd.signal.toFixed(6) : "---";
       document.getElementById("hist").textContent = macd ? macd.histogram.toFixed(6) : "---";
-      document.getElementById("bbUpper").textContent = bb ? bb.upper.toFixed(4) : "---";
-      document.getElementById("bbMiddle").textContent = bb ? bb.middle.toFixed(4) : "---";
-      document.getElementById("bbLower").textContent = bb ? bb.lower.toFixed(4) : "---";
+      document.getElementById("bbUpper").textContent = bb ? bb.upper.toFixed(8) : "---";
+      document.getElementById("bbMiddle").textContent = bb ? bb.middle.toFixed(8) : "---";
+      document.getElementById("bbLower").textContent = bb ? bb.lower.toFixed(8) : "---";
       document.getElementById("stochK").textContent = stochRSI && stochRSI.k !== null ? stochRSI.k.toFixed(2) : "---";
       document.getElementById("stochD").textContent = stochRSI && stochRSI.d !== null ? stochRSI.d.toFixed(2) : "---";
-      document.getElementById("vwap").textContent = vwap ? vwap.toFixed(4) : "---";
-      document.getElementById("atr").textContent = atr ? atr.toFixed(4) : "---";
+      document.getElementById("vwap").textContent = vwap ? vwap.toFixed(8) : "---";
+      document.getElementById("atr").textContent = atr ? atr.toFixed(8) : "---";
       
       var signalEl = document.getElementById("signal");
       if (rsi !== null) {
@@ -1070,7 +1070,7 @@
             
             var dailyHigh = Math.max.apply(null, data.map(function(c) { return c.h; }));
             var dailyLow = Math.min.apply(null, data.map(function(c) { return c.l; }));
-            document.getElementById("daily-high-low").textContent = "H: " + dailyHigh.toFixed(4) + " | L: " + dailyLow.toFixed(4);
+            document.getElementById("daily-high-low").textContent = "H: " + dailyHigh.toFixed(8) + " | L: " + dailyLow.toFixed(8);
             
             var firstClose = data[0].c;
             var lastCandle = data[data.length - 1];
@@ -1171,7 +1171,7 @@
         var askHtml = "";
         asks.slice(0, 5).forEach(function(a) {
           if (a && a[0] !== undefined) {
-            askHtml += '<div class="ob-row"><span class="ob-ask">' + parseFloat(a[0]).toFixed(4) + '</span><span>' + parseFloat(a[1] || 0).toFixed(0) + '</span></div>';
+            askHtml += '<div class="ob-row"><span class="ob-ask">' + parseFloat(a[0]).toFixed(8) + '</span><span>' + parseFloat(a[1] || 0).toFixed(0) + '</span></div>';
           }
         });
         document.getElementById("ob-asks").innerHTML = askHtml;
@@ -1179,7 +1179,7 @@
         var bidHtml = "";
         bids.slice(0, 5).forEach(function(b) {
           if (b && b[0] !== undefined) {
-            bidHtml += '<div class="ob-row"><span class="ob-bid">' + parseFloat(b[0]).toFixed(4) + '</span><span>' + parseFloat(b[1] || 0).toFixed(0) + '</span></div>';
+            bidHtml += '<div class="ob-row"><span class="ob-bid">' + parseFloat(b[0]).toFixed(8) + '</span><span>' + parseFloat(b[1] || 0).toFixed(0) + '</span></div>';
           }
         });
         document.getElementById("ob-bids").innerHTML = bidHtml;
@@ -1187,7 +1187,7 @@
         if (bids.length > 0 && asks.length > 0 && asks[asks.length - 1] && bids[0]) {
           var spread = parseFloat(asks[asks.length - 1][0]) - parseFloat(bids[0][0]);
           var spreadPercent = (spread / parseFloat(bids[0][0])) * 100;
-          document.getElementById("ob-spread").textContent = "Spread: " + spread.toFixed(4) + " (" + spreadPercent.toFixed(2) + "%)";
+          document.getElementById("ob-spread").textContent = "Spread: " + spread.toFixed(8) + " (" + spreadPercent.toFixed(2) + "%)";
         }
       } catch (e) {}
     };
@@ -1229,7 +1229,7 @@
 
     function updateDemoPrice(price) {
       currentPrice = price;
-      document.getElementById("calcEntry").value = price.toFixed(4);
+      document.getElementById("calcEntry").value = price.toFixed(8);
       updatePositionsDisplay();
     }
 
@@ -1294,7 +1294,7 @@
         html += '<div class="journal-item" data-index="' + i + '">';
         html += '<div class="journal-header"><span class="journal-type ' + typeClass + '">' + t.type.toUpperCase() + '</span>';
         html += '<span class="journal-pnl ' + (t.pnl >= 0 ? "pnl-positive" : "pnl-negative") + '">' + pnlText + '</span></div>';
-        html += '<div style="color:var(--text-secondary);font-size:10px;">' + t.size.toFixed(2) + ' @ $' + t.price.toFixed(4) + '</div>';
+        html += '<div style="color:var(--text-secondary);font-size:10px;">' + t.size.toFixed(2) + ' @ $' + t.price.toFixed(8) + '</div>';
         if (t.type === "close" && t.note) {
           html += '<div class="journal-note">' + t.note + '</div>';
         }
@@ -1323,7 +1323,7 @@
         
         html += '<div class="position-row"><span style="color:' + (pos.type === "long" ? "#26a69a" : "#ef5350") + ';">' + pos.type.toUpperCase() + '</span>';
         html += '<span>' + pos.size.toFixed(2) + '</span>';
-        html += '<span>' + pos.entryPrice.toFixed(4) + '</span>';
+        html += '<span>' + pos.entryPrice.toFixed(8) + '</span>';
         html += '<span class="' + pnlClass + '" style="cursor:pointer;" onclick="closePosition(' + idx + ')">' + (unrealized >= 0 ? "+" : "") + unrealized.toFixed(2) + '</span></div>';
       });
       
