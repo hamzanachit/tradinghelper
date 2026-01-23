@@ -917,7 +917,7 @@
       alerts.forEach(function(a, i) {
         var isAbove = a.price > alertPrice;
         html += '<div class="alert-item"><span class="alert-price ' + (isAbove ? 'alert-above' : 'alert-below') + '">' + 
-          (isAbove ? "↑ " : "↓ ") + a.price.toFixed(8) + '</span><button class="alert-delete" onclick="deleteAlert(' + i + ')">✕</button></div>';
+          (isAbove ? "↑ " : "↓ ") + a.price + '</span><button class="alert-delete" onclick="deleteAlert(' + i + ')">✕</button></div>';
       });
       document.getElementById("alerts-list").innerHTML = html;
     }
@@ -928,7 +928,7 @@
         if (!a.triggered) {
           if ((a.price > alertPrice && price >= a.price) || (a.price < alertPrice && price <= a.price)) {
             a.triggered = true;
-            alert("Alert: HBAR/USDT reached $" + a.price.toFixed(8));
+            alert("Alert: HBAR/USDT reached $" + a.price);
             renderAlerts();
           }
         }
@@ -969,7 +969,7 @@
       
       if (close === null || close === undefined) return;
       
-      document.getElementById("price").textContent = close.toFixed(8);
+      document.getElementById("price").textContent = close;
       checkAlerts(close);
       
       var prevCloseData = loadedCandles.length > 1 ? loadedCandles[loadedCandles.length - 2] : null;
@@ -1070,7 +1070,7 @@
             
             var dailyHigh = Math.max.apply(null, data.map(function(c) { return c.h; }));
             var dailyLow = Math.min.apply(null, data.map(function(c) { return c.l; }));
-            document.getElementById("daily-high-low").textContent = "H: " + dailyHigh.toFixed(8) + " | L: " + dailyLow.toFixed(8);
+            document.getElementById("daily-high-low").textContent = "H: " + dailyHigh + " | L: " + dailyLow;
             
             var firstClose = data[0].c;
             var lastCandle = data[data.length - 1];
@@ -1112,35 +1112,48 @@
     const echo = new Echo({
       broadcaster: 'reverb',
       key: 'hbar_trading_key',
-      wsHost: 'localhost',
+      wsHost: '127.0.0.1',
       wsPort: 8080,
+      wssPort: 8080,
       forceTLS: false,
       disableStats: true,
+      enabledTransports: ['ws', 'wss'],
     });
+
+    console.log("Echo initialized, subscribing to candles.HBARUSDT...");
     
     echo.channel('candles.HBARUSDT')
       .listen('.candle', function(data) {
+        console.log("Event received:", data);
+        
+        // Handle Laravel Event structure: payload is { candle: {...}, symbol: ... }
+        if (data && data.candle) {
+            data = data.candle;
+        }
+
         if (!data || data.c === null || data.c === undefined) return;
         
         var candle = { time: data.time, open: data.o, high: data.h, low: data.l, close: data.c, v: data.v || 0 };
         
         if (loadedCandles.length > 0) {
           var last = loadedCandles[loadedCandles.length - 1];
-          if (last && last.time === data.time) {
-            loadedCandles[loadedCandles.length - 1] = data;
+          // Check if updating the same candle (by time)
+          if (last && last.time === candle.time) {
+            loadedCandles[loadedCandles.length - 1] = candle;
             candleSeries.update(candle);
             volumeSeries.update({
-              time: data.time,
-              value: data.v || 0,
-              color: (data.c || 0) >= (last.o || data.o || 0) ? "#26a69a" : "#ef5350"
+              time: candle.time,
+              value: candle.v || 0,
+              color: (candle.c || 0) >= (last.o || candle.o || 0) ? "#26a69a" : "#ef5350"
             });
           } else {
-            loadedCandles.push(data);
+            // New candle
+            loadedCandles.push(candle);
             candleSeries.update(candle);
             volumeSeries.update({
-              time: data.time,
-              value: data.v || 0,
-              color: (data.c || 0) >= (data.o || 0) ? "#26a69a" : "#ef5350"
+              time: candle.time,
+              value: candle.v || 0,
+              color: (candle.c || 0) >= (candle.o || 0) ? "#26a69a" : "#ef5350"
             });
           }
         }
@@ -1148,15 +1161,33 @@
         updateUI(data);
       });
     
+    echo.connector.pusher.connection.bind('state_change', function(states) {
+        console.log("Reverb connection state: " + states.current);
+    });
+
     echo.connector.pusher.connection.bind('connected', function() {
+      console.log("Reverb Connected!");
       document.getElementById("status").textContent = "Live";
       document.getElementById("dot").classList.add("live");
     });
     
     echo.connector.pusher.connection.bind('disconnected', function() {
+      console.log("Reverb Disconnected");
       document.getElementById("status").textContent = "Disconnected";
       document.getElementById("dot").classList.remove("live");
     });
+
+    echo.connector.pusher.connection.bind('error', function(err) {
+        console.error("Reverb Connection Error:", err);
+    });
+
+    echo.channel('candles.HBARUSDT')
+      .on('pusher:subscription_succeeded', function() {
+          console.log("Successfully subscribed to candles.HBARUSDT");
+      })
+      .on('pusher:subscription_error', function(err) {
+          console.error("Subscription Error:", err);
+      });
 
     var orderBookWS = new WebSocket("wss://stream.binance.com:9443/ws/hbarusdt@depth10");
 
@@ -1171,7 +1202,7 @@
         var askHtml = "";
         asks.slice(0, 5).forEach(function(a) {
           if (a && a[0] !== undefined) {
-            askHtml += '<div class="ob-row"><span class="ob-ask">' + parseFloat(a[0]).toFixed(8) + '</span><span>' + parseFloat(a[1] || 0).toFixed(0) + '</span></div>';
+            askHtml += '<div class="ob-row"><span class="ob-ask">' + parseFloat(a[0]) + '</span><span>' + parseFloat(a[1] || 0).toFixed(0) + '</span></div>';
           }
         });
         document.getElementById("ob-asks").innerHTML = askHtml;
@@ -1179,7 +1210,7 @@
         var bidHtml = "";
         bids.slice(0, 5).forEach(function(b) {
           if (b && b[0] !== undefined) {
-            bidHtml += '<div class="ob-row"><span class="ob-bid">' + parseFloat(b[0]).toFixed(8) + '</span><span>' + parseFloat(b[1] || 0).toFixed(0) + '</span></div>';
+            bidHtml += '<div class="ob-row"><span class="ob-bid">' + parseFloat(b[0]) + '</span><span>' + parseFloat(b[1] || 0).toFixed(0) + '</span></div>';
           }
         });
         document.getElementById("ob-bids").innerHTML = bidHtml;
@@ -1187,7 +1218,7 @@
         if (bids.length > 0 && asks.length > 0 && asks[asks.length - 1] && bids[0]) {
           var spread = parseFloat(asks[asks.length - 1][0]) - parseFloat(bids[0][0]);
           var spreadPercent = (spread / parseFloat(bids[0][0])) * 100;
-          document.getElementById("ob-spread").textContent = "Spread: " + spread.toFixed(8) + " (" + spreadPercent.toFixed(2) + "%)";
+          document.getElementById("ob-spread").textContent = "Spread: " + spread + " (" + spreadPercent.toFixed(2) + "%)";
         }
       } catch (e) {}
     };
@@ -1229,7 +1260,7 @@
 
     function updateDemoPrice(price) {
       currentPrice = price;
-      document.getElementById("calcEntry").value = price.toFixed(8);
+      document.getElementById("calcEntry").value = price;
       updatePositionsDisplay();
     }
 
@@ -1294,7 +1325,7 @@
         html += '<div class="journal-item" data-index="' + i + '">';
         html += '<div class="journal-header"><span class="journal-type ' + typeClass + '">' + t.type.toUpperCase() + '</span>';
         html += '<span class="journal-pnl ' + (t.pnl >= 0 ? "pnl-positive" : "pnl-negative") + '">' + pnlText + '</span></div>';
-        html += '<div style="color:var(--text-secondary);font-size:10px;">' + t.size.toFixed(2) + ' @ $' + t.price.toFixed(8) + '</div>';
+        html += '<div style="color:var(--text-secondary);font-size:10px;">' + t.size.toFixed(2) + ' @ $' + t.price + '</div>';
         if (t.type === "close" && t.note) {
           html += '<div class="journal-note">' + t.note + '</div>';
         }
@@ -1323,7 +1354,7 @@
         
         html += '<div class="position-row"><span style="color:' + (pos.type === "long" ? "#26a69a" : "#ef5350") + ';">' + pos.type.toUpperCase() + '</span>';
         html += '<span>' + pos.size.toFixed(2) + '</span>';
-        html += '<span>' + pos.entryPrice.toFixed(8) + '</span>';
+        html += '<span>' + pos.entryPrice + '</span>';
         html += '<span class="' + pnlClass + '" style="cursor:pointer;" onclick="closePosition(' + idx + ')">' + (unrealized >= 0 ? "+" : "") + unrealized.toFixed(2) + '</span></div>';
       });
       

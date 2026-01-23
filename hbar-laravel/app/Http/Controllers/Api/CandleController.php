@@ -87,4 +87,18 @@ class CandleController extends Controller
             'low' => (float)$data['lowPrice'],
         ]);
     }
+    public function broadcast(Request $request)
+    {
+        $candle = $request->input('candle');
+        $symbol = $request->input('symbol', 'HBARUSDT');
+
+        if ($candle) {
+            \Illuminate\Support\Facades\Log::info("Broadcasting candle for {$symbol}: " . $candle['c']);
+            event(new \App\Events\BinanceCandleUpdated($candle, $symbol));
+            Cache::put("binance_candle_{$symbol}", $candle, now()->addHour());
+            return response()->json(['status' => 'broadcasted']);
+        }
+
+        return response()->json(['status' => 'ignored'], 400);
+    }
 }

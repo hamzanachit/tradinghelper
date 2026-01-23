@@ -16,6 +16,7 @@ Route::post('/auth/login', [AuthController::class, 'login']);
 Route::get('/candles', [CandleController::class, 'index']);
 Route::get('/candles/latest', [CandleController::class, 'latest']);
 Route::get('/24h', [CandleController::class, 'ticker24h']);
+Route::post('/internal/broadcast-candle', [CandleController::class, 'broadcast']);
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/auth/logout', [AuthController::class, 'logout']);

@@ -12,7 +12,7 @@ return [
             'secret' => env('REVERB_APP_SECRET'),
             'app_id' => env('REVERB_APP_ID'),
             'options' => [
-                'host' => env('REVERB_HOST', '0.0.0.0'),
+                'host' => '127.0.0.1',
                 'port' => env('REVERB_PORT', 8080),
                 'hostname' => env('REVERB_HOSTNAME'),
                 'cluster' => env('REVERB_CLUSTER', 'us2'),
